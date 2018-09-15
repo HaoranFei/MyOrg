@@ -12,19 +12,26 @@
 //https://coursetro.com/posts/code/100/Solidity-Events-Tutorial---Using-Web3.js-to-Listen-for-Smart-Contract-Events
 
 
+//version number
+pragma solidity ^0.4.21;  
 
-pragma solidity ^0.4.21;
+
 
 contract MyOrg {
 
-        // This declares a new complex type which will
+    // This declares a new complex type which will
     // be used for variables later.
     // It will represent a single voter.
     struct Member {
-        uint influence;
-        address Address; 
+        uint exists; 
+        
+        //Token for memeber's right to participate in the organization.
+        uint influence; 
+        // Member's ethereum address
+        address Address;  
         bool isDelegating; 
         address delegate; 
+        //ID of the proposal that is under voting.
         uint votingOn;
         bool vote; 
     }
@@ -35,15 +42,22 @@ contract MyOrg {
         string description;
         
         //Class 0: add member proposal
-        //Class 1: everything else
+        //Class 1: removing member proposal
+        //Class 2: 
         uint class;
         address info;
         address initiator;
 
+        //Mapping implicitly initalize to all zeros
+        //zero indicates that the said person has not voted
+        //1-3 means 1-3 votes are casted 
+        mapping (address => uint) voteHistory;
         bool archived; 
         uint voteFor;
         uint voteAgainst;
         bool passed; 
+
+
     }
     
     uint public startInfluence;
@@ -51,10 +65,18 @@ contract MyOrg {
     uint public numProposals;
     uint public proposalCost;
     uint public votingCost;
+    uint80 constant None = uint80(0); 
+
     mapping (address => Member) getMember;
+    
     mapping (address => uint) idOf;
+    
     mapping (address => uint) public influenceOf;
+
+    mapping (string => uint) idOfProposal;
+
     Proposal[] proposals;
+
     
 
     // This is the constructor whose code is
@@ -86,10 +108,11 @@ contract MyOrg {
     
     //Create a Proposal to addMember
     //All existing members need to vote on this proposal
-    function addMember(address Address) public {
+    function addMember(address Address, string desc) public {
+        uint id = numProposals; 
         proposals.push(Proposal({
             name: "Adding member on this address",
-            description: toString(Address),
+            description: desc,
             class: 0,
             info: Address,
             initiator: msg.sender,
@@ -100,11 +123,35 @@ contract MyOrg {
         }));
         numProposals += 1; 
         getMember[msg.sender].influence -= proposalCost;
+        idOfProposal[desc] = id; 
     }
+
+    
+    function removeMember(address Address, string desc) public{
+        uint id = numProposals;
+        proposals.push(Proposal({
+            name: "Remove member with this address",
+            description: desc,
+            class: 1, 
+            info: Address,
+            initiator: msg.sender,
+            archived: false,
+            voteFor: 1,
+            voteAgainst: 0,
+            passed: false
+        }));
+        numProposals += 1; 
+        getMember[msg.sender].influence -= proposalCost;
+        idOfProposal[desc] = id; 
+    }
+
+    //function propose()
+    
 
     function handleProposal(Proposal p) private{
         if(p.class == 0){
             getMember[p.info] = Member({
+            exists: 1, 
             influence: startInfluence,
             Address: p.info,
             isDelegating: false,
@@ -112,10 +159,17 @@ contract MyOrg {
             votingOn: 0,
             vote: false
             });
+            numMembers += 1;
+        }
+        else if (p.class == 1){
+            getMember[p.info].exists = 0; 
+            numMembers -= 1; 
         }
     }
     
-    function voteOnProposal(uint id, bool agree) public payable {
+    //voteNum = number of votes casted 
+    //vc = vote cost, compute externally
+    function voteOnProposal(uint id, int voteNum, uint vc) public payable {
         require(
             id >= 0,
             "Id has to be at least 0!"
@@ -128,23 +182,37 @@ contract MyOrg {
             proposals[id].archived == false,
             "You cannot vote on a proposal that is already closed!"
         );
+        require(
+            voteNum >= -3,
+            "You can cast no more than 3 against votes!"
+        );
+        require
+            voteNum <= 3,
+            "You can cast no more than 3 for votes!"
+        );
+    
+            
+        getMember[msg.sender].influence -= vc;
 
-        getMember[msg.sender].influence -= votingCost;
+        P = proposals[id];
 
-        if(agree){
-            proposals[id].voteFor += 1;
+        if(voteNum > 0){
+            P.voteFor += voteNum;
         }
         else{
-            proposals[id].voteAgainst += 1;
+            P.voteAgainst -= voteNum;
         }
+
+        P.voteHistory[msg.sender] = voteNum;
+
+
         uint totalVotes;
         totalVotes = proposals[id].voteFor + proposals[id].voteAgainst;
         if (totalVotes >= numMembers){
-            proposals[id].archived = true;
+            proposals[id].archived = true; //There should be a expire date
             if(proposals[id].voteFor > proposals[id].voteAgainst){
                 proposals[id].passed = true;
                 handleProposal(proposals[id]);
-
                 getMember[proposals[id].initiator].influence += 2 * proposalCost;
             }
             else{
@@ -153,3 +221,5 @@ contract MyOrg {
         }
 
     }
+
+}
