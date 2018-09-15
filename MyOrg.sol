@@ -26,7 +26,7 @@ contract MyOrg {
         uint exists; 
         
         //Token for memeber's right to participate in the organization.
-        uint influence; 
+        int influence; 
         // Member's ethereum address
         address Address;  
         bool isDelegating; 
@@ -39,10 +39,10 @@ contract MyOrg {
     struct ProposalVerifier{
         string proof; //Might need to encode image outside of smart contract
         bool archived;
-        uint voteFor;
-        uint voteAgainst;
+        int voteFor;
+        int voteAgainst;
         bool passed;
-        mapping (address => bool) public hasVoted;
+        mapping (address => bool) hasVoted;
     }
 
     // This is a type for a single proposal.
@@ -55,18 +55,18 @@ contract MyOrg {
         //Class 2: everything else
 
         uint class;
-        uint proposeCost;
+        int cost;
         address info;
         address initiator;
 
         //Mapping implicitly initalize to all zeros
         //zero indicates that the said person has not voted
         //1-3 means 1-3 votes are casted 
-        mapping (address => uint) voteHistory;
+        mapping (address => int) voteHistory;
 
         bool archived; 
-        uint voteFor;
-        uint voteAgainst;
+        int voteFor;
+        int voteAgainst;
         bool passed; 
 
         ProposalVerifier verify;
@@ -75,11 +75,11 @@ contract MyOrg {
 
 
 
-    uint public startInfluence;
-    uint public numMembers;
+    int public startInfluence;
+    int public numMembers;
     uint public numProposals;
-    uint public proposalCost;
-    uint public votingCost;
+    int public proposalCost;
+    int public votingCost;
     uint80 constant None = uint80(0); 
 
     mapping (address => Member) getMember;
@@ -95,13 +95,14 @@ contract MyOrg {
 
     // This is the constructor whose code is
     // run only when the contract is created.
-    constructor(uint startInf, uint pcost, uint vcost) public{
+    constructor(int startInf, int pcost, int vcost) public{
         startInfluence = startInf;
         numMembers = 1;
         numProposals = 0;
         proposalCost = pcost;
         votingCost = vcost; 
         getMember[msg.sender] = Member({
+            exist: true,
             influence: startInf,
             Address: msg.sender,
             isDelegating: false,
@@ -122,40 +123,46 @@ contract MyOrg {
     
     //Create a Proposal to addMember
     //All existing members need to vote on this proposal
-    function addMember(address Address, string desc) public {
+    function addMember(address Address, string desc, int c) public {
         uint id = numProposals; 
+        mapping (address => int) vH; 
         proposals.push(Proposal({
             name: "Adding member on this address",
             description: desc,
             class: 0,
+            cost: c, 
             info: Address,
             initiator: msg.sender,
+            voteHistory: vH, 
             archived: false,
             voteFor: 1,
             voteAgainst: 0,
             passed: false
         }));
         numProposals += 1; 
-        getMember[msg.sender].influence -= proposalCost;
+        getMember[msg.sender].influence -= c;
         idOfProposal[desc] = id; 
     }
 
     
-    function removeMember(address Address, string desc) public{
+    function removeMember(address Address, string desc, int c) public{
         uint id = numProposals;
+        mapping (address => int) vH; 
         proposals.push(Proposal({
             name: "Remove member with this address",
             description: desc,
             class: 1, 
+            cost: c,
             info: Address,
             initiator: msg.sender,
+            voteHistory: vH,
             archived: false,
             voteFor: 1,
             voteAgainst: 0,
             passed: false
         }));
         numProposals += 1; 
-        getMember[msg.sender].influence -= proposalCost;
+        getMember[msg.sender].influence -= c;
         idOfProposal[desc] = id; 
     }
 
@@ -183,7 +190,7 @@ contract MyOrg {
     
     //voteNum = number of votes casted 
     //vc = vote cost, compute externally
-    function voteOnProposal(uint id, int voteNum, uint vc) public payable {
+    function voteOnProposal(uint id, int voteNum, int vc) public payable {
         require(
             id >= 0,
             "Id has to be at least 0!"
@@ -196,11 +203,13 @@ contract MyOrg {
             proposals[id].archived == false,
             "You cannot vote on a proposal that is already closed!"
         );
+
         require(
             voteNum >= -3,
             "You can cast no more than 3 against votes!"
         );
-        require
+
+        require(
             voteNum <= 3,
             "You can cast no more than 3 for votes!"
         );
@@ -208,7 +217,7 @@ contract MyOrg {
             
         getMember[msg.sender].influence -= vc;
 
-        P = proposals[id];
+        Proposal storage P = proposals[id];
 
         if(voteNum > 0){
             P.voteFor += voteNum;
@@ -220,23 +229,23 @@ contract MyOrg {
         P.voteHistory[msg.sender] = voteNum;
 
 
-        uint totalVotes;
-        totalVotes = proposals[id].voteFor + proposals[id].voteAgainst;
+        int totalVotes;
+        totalVotes = P.voteFor + P.voteAgainst;
 
-        if (totalVotes >= numMembers && proposals[id].verify.archived){
-            proposals[id].archived = true;
-            if(proposals[id].voteFor > proposals[id].voteAgainst){
-                proposals[id].passed = true;
-                handleProposal(proposals[id]);
-                getMember[proposals[id].initiator].influence += 2 * proposalCost;
+        if (totalVotes >= numMembers && P.verify.archived){
+            P.archived = true;
+            if(P.voteFor > P.voteAgainst){
+                P.passed = true;
+                handleProposal(P);
+                getMember[P.initiator].influence += 2 * proposalCost;
             }
             else{
-                proposals[id].passed = false;
+                P.passed = false;
             }
         }
 
     }
-}
+
 
     function proposal_verify(uint id, bool agree){
         require(
@@ -251,19 +260,24 @@ contract MyOrg {
             proposals[id].archived == false,
             "You cannot supervise a proposal that is already closed!"
         );
-        ProposalVerifier PV = proposals[id].verify;
+
+        ProposalVerifier storage PV = proposals[id].verify;
+
         PV.hasVoted[msg.sender] = true; 
         if (agree){
             PV.voteFor += 1;
-        }else{
+        }
+        else{
             PV.voteAgainst += 1;
         }
+
         if(PV.voteFor >= numMembers / 2){
-            PV.passed = true
-            PV.archived = true
-        }else if(PV.voteAgainst >= numMembers / 2){
-            PV.passed = false
-            PV.archived = true
+            PV.passed = true;
+            PV.archived = true;
+        }
+        else if(PV.voteAgainst >= numMembers / 2){
+            PV.passed = false;
+            PV.archived = true;
         }
 
     }
