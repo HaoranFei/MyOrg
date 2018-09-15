@@ -1,5 +1,5 @@
 //9/1/2018
-//by Haoran Fei
+//by Yuchi Zhang, Haoran Fei
 //This is the first version of a solidity smart contract under development. It will be used for a DAPP that helps 
 //manage a decentralized, automonous and democratic organization of small scale.
  
@@ -36,6 +36,15 @@ contract MyOrg {
         bool vote; 
     }
 
+    struct ProposalVerifier{
+        string proof; //Might need to encode image outside of smart contract
+        bool archived;
+        uint voteFor;
+        uint voteAgainst;
+        bool passed;
+        mapping (address => bool) public hasVoted;
+    }
+
     // This is a type for a single proposal.
     struct Proposal {
         bytes32 name;   // short name (up to 32 bytes)
@@ -43,8 +52,10 @@ contract MyOrg {
         
         //Class 0: add member proposal
         //Class 1: removing member proposal
-        //Class 2: 
+        //Class 2: everything else
+
         uint class;
+        uint proposeCost;
         address info;
         address initiator;
 
@@ -52,14 +63,18 @@ contract MyOrg {
         //zero indicates that the said person has not voted
         //1-3 means 1-3 votes are casted 
         mapping (address => uint) voteHistory;
+
         bool archived; 
         uint voteFor;
         uint voteAgainst;
         bool passed; 
 
+        ProposalVerifier verify;
 
     }
-    
+
+
+
     uint public startInfluence;
     uint public numMembers;
     uint public numProposals;
@@ -76,7 +91,6 @@ contract MyOrg {
     mapping (string => uint) idOfProposal;
 
     Proposal[] proposals;
-
     
 
     // This is the constructor whose code is
@@ -208,8 +222,9 @@ contract MyOrg {
 
         uint totalVotes;
         totalVotes = proposals[id].voteFor + proposals[id].voteAgainst;
-        if (totalVotes >= numMembers){
-            proposals[id].archived = true; //There should be a expire date
+
+        if (totalVotes >= numMembers && proposals[id].verify.archived){
+            proposals[id].archived = true;
             if(proposals[id].voteFor > proposals[id].voteAgainst){
                 proposals[id].passed = true;
                 handleProposal(proposals[id]);
@@ -221,5 +236,35 @@ contract MyOrg {
         }
 
     }
+}
 
+    function proposal_verify(uint id, bool agree){
+        require(
+            id >= 0,
+            "Id has to be at least 0!"
+        );
+        require(
+            id < numProposals,
+            "Id cannot be larger than number of Proposals!"
+        );
+        require(
+            proposals[id].archived == false,
+            "You cannot supervise a proposal that is already closed!"
+        );
+        ProposalVerifier PV = proposals[id].verify;
+        PV.hasVoted[msg.sender] = true; 
+        if (agree){
+            PV.voteFor += 1;
+        }else{
+            PV.voteAgainst += 1;
+        }
+        if(PV.voteFor >= numMembers / 2){
+            PV.passed = true
+            PV.archived = true
+        }else if(PV.voteAgainst >= numMembers / 2){
+            PV.passed = false
+            PV.archived = true
+        }
+
+    }
 }
