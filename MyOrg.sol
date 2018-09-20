@@ -34,6 +34,8 @@ contract MyOrg {
         //ID of the proposal that is under voting.
         uint votingOn;
         bool vote; 
+        uint[] start; //Once the porposal passed, this should record the starting time.
+        uint[] timeLimit;
     }
 
     struct ProposalVerifier{
