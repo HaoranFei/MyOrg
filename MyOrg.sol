@@ -17,6 +17,7 @@ pragma solidity ^0.4.21;
 
 
 
+
 contract MyOrg {
 
     // This declares a new complex type which will
