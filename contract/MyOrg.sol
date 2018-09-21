@@ -17,6 +17,7 @@ pragma solidity ^0.4.21;
 
 
 
+
 contract MyOrg {
 
     // This declares a new complex type which will
@@ -34,8 +35,6 @@ contract MyOrg {
         //ID of the proposal that is under voting.
         uint votingOn;
         bool vote; 
-        uint[] start; //Once the porposal passed, this should record the starting time.
-        uint[] timeLimit;
     }
 
     struct ProposalVerifier{
@@ -44,7 +43,6 @@ contract MyOrg {
         int voteFor;
         int voteAgainst;
         bool passed;
-        mapping (address => bool) hasVoted;
     }
 
     // This is a type for a single proposal.
@@ -60,11 +58,10 @@ contract MyOrg {
         int cost;
         address info;
         address initiator;
+        //The person to execute the proposal for class 2 proposals
+        //Defualt to 0 for class 0 and 1
+        address executor; 
 
-        //Mapping implicitly initalize to all zeros
-        //zero indicates that the said person has not voted
-        //1-3 means 1-3 votes are casted 
-        mapping (address => int) voteHistory;
 
         bool archived; 
         int voteFor;
@@ -92,6 +89,15 @@ contract MyOrg {
 
     mapping (string => uint) idOfProposal;
 
+
+    //Mapping implicitly initalize to all zeros
+    //zero indicates that the said person has not voted
+    //1-3 means 1-3 votes are casted 
+    mapping (uint => mapping(address => int)) voteHistory;
+
+    mapping (uint => mapping(address => bool)) hasVerified;
+
+
     Proposal[] proposals;
     
 
@@ -104,7 +110,7 @@ contract MyOrg {
         proposalCost = pcost;
         votingCost = vcost; 
         getMember[msg.sender] = Member({
-            exist: true,
+            exists: 1,
             influence: startInf,
             Address: msg.sender,
             isDelegating: false,
@@ -121,13 +127,28 @@ contract MyOrg {
             b[i] = byte(uint8(uint(x) / (2**(8*(19 - i)))));
         return string(b);
     }
+
+    function emptyVerifier() private pure returns (ProposalVerifier){
+        ProposalVerifier memory PV = 
+        ProposalVerifier({
+            proof: "",
+
+            archived: false,
+
+            voteFor: 0,
+
+            voteAgainst: 0,
+
+            passed: false
+        });
+        return PV;
+    }
     
     
     //Create a Proposal to addMember
     //All existing members need to vote on this proposal
     function addMember(address Address, string desc, int c) public {
         uint id = numProposals; 
-        mapping (address => int) vH; 
         proposals.push(Proposal({
             name: "Adding member on this address",
             description: desc,
@@ -135,11 +156,12 @@ contract MyOrg {
             cost: c, 
             info: Address,
             initiator: msg.sender,
-            voteHistory: vH, 
+            executor: 0,
             archived: false,
             voteFor: 1,
             voteAgainst: 0,
-            passed: false
+            passed: false,
+            verify: emptyVerifier()
         }));
         numProposals += 1; 
         getMember[msg.sender].influence -= c;
@@ -149,7 +171,6 @@ contract MyOrg {
     
     function removeMember(address Address, string desc, int c) public{
         uint id = numProposals;
-        mapping (address => int) vH; 
         proposals.push(Proposal({
             name: "Remove member with this address",
             description: desc,
@@ -157,18 +178,42 @@ contract MyOrg {
             cost: c,
             info: Address,
             initiator: msg.sender,
-            voteHistory: vH,
+            executor: 0, 
             archived: false,
             voteFor: 1,
             voteAgainst: 0,
-            passed: false
+            passed: false,
+            verify: emptyVerifier()
         }));
         numProposals += 1; 
         getMember[msg.sender].influence -= c;
         idOfProposal[desc] = id; 
     }
 
-    //function propose()
+    function propose(bytes32 n, string desc, int c, address eaddress) public payable {
+        uint id = numProposals;
+        proposals.push(Proposal({
+
+            name: n,
+            description: desc,
+            class: 2,
+            cost: c,
+            info: 0,
+            initiator: msg.sender,
+            executor: eaddress, 
+            archived: false,
+            voteFor: 1,
+            voteAgainst: 0,
+            passed: false,
+            verify: emptyVerifier()
+        }));
+        numProposals += 1;
+
+        getMember[msg.sender].influence -= c;
+
+        idOfProposal[desc] = id; 
+
+    }
     
 
     function handleProposal(Proposal p) private{
@@ -188,11 +233,31 @@ contract MyOrg {
             getMember[p.info].exists = 0; 
             numMembers -= 1; 
         }
+        else if (p.class ==2){
+            //Currently nothing
+        }
+    }
+
+
+    //Utility functions to help award/penalize individuals
+
+    function awardClass01(Proposal p, int ibonus) private{
+        getMember[p.initiator].influence += ibonus;
+    }
+
+    function awardClass2(Proposal p, int ibonus, int ebonus) private{
+        getMember[p.initiator].influence += ibonus;
+        getMember[p.executor].influence += ebonus;
+    }
+
+    function penaltyClass2(Proposal p, int ipenal, int epenal) private{
+        getMember[p.initiator].influence -= ipenal;
+        getMember[p.executor].influence -= epenal;
     }
     
     //voteNum = number of votes casted 
     //vc = vote cost, compute externally
-    function voteOnProposal(uint id, int voteNum, int vc) public payable {
+    function voteOnProposal(uint id, int voteNum, int vc, int ibonus) public payable {
         require(
             id >= 0,
             "Id has to be at least 0!"
@@ -207,6 +272,11 @@ contract MyOrg {
         );
 
         require(
+            voteHistory[id][msg.sender] == 0,
+            "You must not revote if you have already voted!"
+        );
+
+        require(
             voteNum >= -3,
             "You can cast no more than 3 against votes!"
         );
@@ -215,6 +285,7 @@ contract MyOrg {
             voteNum <= 3,
             "You can cast no more than 3 for votes!"
         );
+
     
             
         getMember[msg.sender].influence -= vc;
@@ -228,7 +299,7 @@ contract MyOrg {
             P.voteAgainst -= voteNum;
         }
 
-        P.voteHistory[msg.sender] = voteNum;
+        voteHistory[id][msg.sender] = voteNum;
 
 
         int totalVotes;
@@ -239,7 +310,11 @@ contract MyOrg {
             if(P.voteFor > P.voteAgainst){
                 P.passed = true;
                 handleProposal(P);
-                getMember[P.initiator].influence += 2 * proposalCost;
+
+                if(P.class != 2){
+                    awardClass01(P, ibonus);
+                }
+
             }
             else{
                 P.passed = false;
@@ -248,8 +323,14 @@ contract MyOrg {
 
     }
 
+    //Helper for the app to upload proof onto the blockchain
+    function uploadProof(uint id, string pf) public pure{
+        Proposal storage P = proposals[id];
+        P.verify.proof = pf;
+    }
 
-    function proposal_verify(uint id, bool agree){
+    //ibonus and ebonus calculated offline
+    function proposal_verify(uint id, bool agree, int ibonus, int ebonus, int ipenal, int epenal) public{
         require(
             id >= 0,
             "Id has to be at least 0!"
@@ -262,10 +343,19 @@ contract MyOrg {
             proposals[id].archived == false,
             "You cannot supervise a proposal that is already closed!"
         );
+        require(
+            proposals[id].class == 2,
+            "You can only verify class 2 proposals"
+        );
+        require(
+            hasVerified[id][msg.sender] = false,
+            "You have already voted for verification on this proposal!"
+        );
 
+        Proposal storage P = proposals[id];
         ProposalVerifier storage PV = proposals[id].verify;
 
-        PV.hasVoted[msg.sender] = true; 
+        hasVerified[id][msg.sender] = true; 
         if (agree){
             PV.voteFor += 1;
         }
@@ -275,12 +365,14 @@ contract MyOrg {
 
         if(PV.voteFor >= numMembers / 2){
             PV.passed = true;
-            PV.archived = true;
+            awardClass2(P, ibonus, ebonus);
         }
         else if(PV.voteAgainst >= numMembers / 2){
             PV.passed = false;
-            PV.archived = true;
+            penaltyClass2(P, ipenal, epenal);
         }
+
+        PV.archived = true;
 
     }
 }

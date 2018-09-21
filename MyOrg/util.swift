@@ -9,30 +9,30 @@
 import Foundation
 
 func decodeYear(time: Int) -> Int{
-    return (0x000006C0 && time) >> 6
+    return (0x000006C0 & time) >> 6
     
 }
 func decodeMonth(time: Int) -> Int{
-    return (0x00000030 && time) >> 4
+    return (0x00000030 & time) >> 4
     
 }
 
 func decodeDay(time: Int) -> Int{
-    return (0x0000000C && time) >> 2
+    return (0x0000000C & time) >> 2
 }
 
 func decodeMonth(time: Int) -> Int{
-    return (0x00000030 && time) >> 4
+    return (0x00000030 & time) >> 4
 }
 
 func encodeStartTime(prop: Proposal){
-    let date = Date()
-    let calendar = Calendar.current
-    let year = components.year
-    let month = components.month
-    let day = components.month
-    let hour = calendar.component(.hour, from: date)
-    prop.start = (year << 6) || (month << 4) || (day << 2) || hour
+    let date = Date();
+    let calendar = Calendar.current;
+    let year = Foundations.DateComponents.year;
+    let month = Foundations.DateComponents.month;
+    let day = components.month;
+    let hour = calendar.component(.hour, from: date);
+    prop.start = (year << 6) || (month << 4) || (day << 2) || hour;
     
 }
 //数据从前方传过来。
@@ -41,7 +41,7 @@ func encodeTimeLimit(prop: Proposal){
 }
 
 
-func checkDueDate(prop: Proposal)-> ok: Bool{
+func checkDueDate(prop: Proposal)-> Bool{
     let timer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(fireTimer(prop.start, prop.timeLimit)), userInfo: nil, repeats: true)
 }
 @objc func fireTimer(start: Int, timeLimit: Int){
