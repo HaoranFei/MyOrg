@@ -324,7 +324,7 @@ contract MyOrg {
     }
 
     //Helper for the app to upload proof onto the blockchain
-    function uploadProof(uint id, string pf) public pure{
+    function uploadProof(uint id, string pf) public{
         Proposal storage P = proposals[id];
         P.verify.proof = pf;
     }
